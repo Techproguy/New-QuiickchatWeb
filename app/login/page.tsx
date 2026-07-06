@@ -79,7 +79,7 @@ export default function LoginPage() {
         {/* Right side - QR or Phone form */}
         <div className="flex-shrink-0 flex flex-col items-center">
           {tab === "qr" ? (
-            <QRLogin />
+            <QRLogin onUsePhone={() => setTab("phone")} />
           ) : (
             <PhoneLogin />
           )}
