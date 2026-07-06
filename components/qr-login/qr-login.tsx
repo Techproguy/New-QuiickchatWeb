@@ -5,16 +5,31 @@ import { useRouter } from "next/navigation"
 import { QRCodeDisplay } from "./qr-code-display"
 import { qrAuthService, type QRCodeResponse, type QRStatusResponse } from "@/lib/qr-auth-service"
 import { apiClient } from "@/lib/api-config"
-import { Loader2, CheckCircle2, XCircle, RefreshCw } from "lucide-react"
+import { Loader2, CheckCircle2, XCircle, RefreshCw, Smartphone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface QRLoginProps {
   onSuccess?: () => void
+  onUsePhone?: () => void
 }
 
-type QRStatus = "generating" | "waiting" | "scanned" | "approved" | "rejected" | "expired" | "error"
+type QRStatus = "generating" | "waiting" | "scanned" | "approved" | "rejected" | "expired" | "error" | "unavailable"
 
-export function QRLogin({ onSuccess }: QRLoginProps) {
+// A missing backend QR route (e.g. "Route POST:/api/v1/qr/generate not found")
+// or a 404/501 response means QR login isn't available on the server right now.
+const isQRUnavailable = (msg: string): boolean => {
+  const m = (msg || "").toLowerCase()
+  return (
+    m.includes("not found") ||
+    m.includes("not implemented") ||
+    m.includes("404") ||
+    m.includes("501") ||
+    m.includes("route post") ||
+    m.includes("route get")
+  )
+}
+
+export function QRLogin({ onSuccess, onUsePhone }: QRLoginProps) {
   const router = useRouter()
   const [qrData, setQrData] = useState<string>("")
   const [sessionId, setSessionId] = useState<string>("")
@@ -92,8 +107,15 @@ export function QRLogin({ onSuccess }: QRLoginProps) {
       setMessage("Scan this QR code with your mobile app")
     } catch (error: any) {
       console.error("Failed to generate QR code:", error)
-      setStatus("error")
-      setMessage(error.message || "Failed to generate QR code. Please check your connection and try again.")
+      if (isQRUnavailable(error?.message || "")) {
+        // The backend doesn't serve the QR login route — don't show the raw
+        // "Route POST:/api/v1/qr/generate not found" error to the user.
+        setStatus("unavailable")
+        setMessage("QR login isn't available right now. Please sign in with your phone number instead.")
+      } else {
+        setStatus("error")
+        setMessage(error.message || "Failed to generate QR code. Please check your connection and try again.")
+      }
     }
   }
 
@@ -220,6 +242,8 @@ export function QRLogin({ onSuccess }: QRLoginProps) {
       case "expired":
       case "error":
         return <XCircle className="h-6 w-6 text-red-600" />
+      case "unavailable":
+        return <Smartphone className="h-6 w-6 text-emerald-600" />
       default:
         return null
     }
@@ -238,6 +262,8 @@ export function QRLogin({ onSuccess }: QRLoginProps) {
       case "expired":
       case "error":
         return "text-red-600"
+      case "unavailable":
+        return "text-emerald-700"
       default:
         return "text-gray-600"
     }
@@ -249,8 +275,8 @@ export function QRLogin({ onSuccess }: QRLoginProps) {
       <div className="relative">
         <QRCodeDisplay qrData={qrData} size={256} />
         
-        {/* Overlay when generating or expired */}
-        {(status === "generating" || status === "expired") && (
+        {/* Overlay when generating, expired or unavailable */}
+        {(status === "generating" || status === "expired" || status === "unavailable") && (
           <div className="absolute inset-0 bg-white/80 rounded-lg flex items-center justify-center">
             {status === "generating" && (
               <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
@@ -259,6 +285,12 @@ export function QRLogin({ onSuccess }: QRLoginProps) {
               <div className="text-center">
                 <XCircle className="h-12 w-12 text-red-600 mx-auto mb-2" />
                 <p className="text-sm text-gray-600">Expired</p>
+              </div>
+            )}
+            {status === "unavailable" && (
+              <div className="text-center px-4">
+                <Smartphone className="h-12 w-12 text-emerald-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-600">QR login unavailable</p>
               </div>
             )}
           </div>
@@ -298,7 +330,7 @@ export function QRLogin({ onSuccess }: QRLoginProps) {
       )}
 
       {/* Action Buttons */}
-      <div className="flex gap-4">
+      <div className="flex flex-col items-center gap-3">
         {(status === "expired" || status === "rejected" || status === "error") && (
           <Button
             onClick={generateQRCode}
@@ -306,6 +338,22 @@ export function QRLogin({ onSuccess }: QRLoginProps) {
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Generate New QR Code
+          </Button>
+        )}
+
+        {/* Offer phone login whenever QR can't be used */}
+        {(status === "unavailable" || status === "error") && onUsePhone && (
+          <Button
+            onClick={onUsePhone}
+            variant={status === "unavailable" ? "default" : "outline"}
+            className={
+              status === "unavailable"
+                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                : ""
+            }
+          >
+            <Smartphone className="h-4 w-4 mr-2" />
+            Sign in with phone number
           </Button>
         )}
       </div>
